@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hand Cricket — Classroom Showdown</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- ============ SCREEN: CONNECT ============ -->
+  <section id="screen-connect" class="screen active">
+    <div class="card center-card">
+      <div class="brand"><span class="dot"></span> Hand Cricket</div>
+      <p class="sub">Classroom Showdown</p>
+
+      <label class="field">
+        <span>Your name</span>
+        <input id="nameInput" type="text" maxlength="18" placeholder="e.g. Arjun">
+      </label>
+
+      <label class="field small">
+        <span>Server address</span>
+        <input id="serverInput" type="text" value="ws://localhost:8765">
+      </label>
+
+      <div class="btn-row">
+        <button id="btnCreateRoom" class="btn primary">Create room</button>
+      </div>
+      <div class="btn-row">
+        <input id="joinCodeInput" type="text" maxlength="5" placeholder="ROOM CODE" class="code-input">
+        <button id="btnJoinRoom" class="btn secondary">Join room</button>
+      </div>
+      <div class="divider">or</div>
+      <div class="btn-row">
+        <button id="btnPlayBot" class="btn bot">Play vs Bot</button>
+      </div>
+      <p class="error" id="connectError"></p>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: LOBBY ============ -->
+  <section id="screen-lobby" class="screen">
+    <div class="topbar">
+      <div class="brand"><span class="dot"></span> Hand Cricket</div>
+      <div class="meta">
+        <div class="room-chip">Room <b id="roomCodeLabel">-----</b></div>
+        <button id="btnExitRoom" class="btn small outline">Exit room</button>
+      </div>
+    </div>
+
+    <div class="lobby-grid">
+      <div class="panel batting">
+        <div class="panel-head">
+          <svg class="icon" viewBox="0 0 48 48" fill="none">
+            <rect x="21" y="4" width="6" height="24" rx="3" fill="#b7e2bf" transform="rotate(18 24 16)"/>
+            <rect x="16" y="26" width="16" height="14" rx="4" fill="#8b5e3c" transform="rotate(18 24 33)"/>
+          </svg>
+          <h2>Squad 1</h2>
+        </div>
+        <div class="player-list" id="battingSquadList"></div>
+        <button class="btn small outline" data-team="batting">Join this squad</button>
+      </div>
+
+      <div class="lobby-center">
+        <div class="setting-block">
+          <label class="field small">
+            <span>Your player name</span>
+            <input id="lobbyNameInput" type="text" maxlength="18" placeholder="Enter your name">
+          </label>
+          <label class="field small">
+            <span>Overs (host sets this)</span>
+            <input id="oversInput" type="number" min="1" max="20" value="2">
+          </label>
+          <button id="btnSetOvers" class="btn small outline">Set overs</button>
+          <p class="muted" id="oversDisplay">Overs not set yet.</p>
+          <div class="match-settings" id="matchSettings" style="display:none;">
+            <label class="field small">
+              <span>Bot level</span>
+              <span class="radio-row">
+                <label><input type="radio" name="difficulty" value="easy"> Easy</label>
+                <label><input type="radio" name="difficulty" value="medium" checked> Medium</label>
+                <label><input type="radio" name="difficulty" value="hard"> Hard</label>
+              </span>
+            </label>
+            <label class="field small">
+              <span>Seconds per ball (5–15)</span>
+              <input id="timerInput" type="number" min="5" max="15" value="15">
+            </label>
+            <button id="btnSetSettings" class="btn small outline">Apply match settings</button>
+            <p class="muted" id="settingsDisplay">Medium bot, 15 seconds per ball.</p>
+          </div>
+        </div>
+        <button id="btnStartMatch" class="btn primary big">Start Match</button>
+        <p class="muted" id="lobbyHint">Waiting for players…</p>
+      </div>
+
+      <div class="panel bowling">
+        <div class="panel-head">
+          <svg class="icon" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="14" fill="#f0bdb0"/>
+            <path d="M14 24h20M24 14v20" stroke="#7a2f22" stroke-width="1.5"/>
+          </svg>
+          <h2>Squad 2</h2>
+        </div>
+        <div class="player-list" id="bowlingSquadList"></div>
+        <button class="btn small outline" data-team="bowling">Join this squad</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: TOSS ============ -->
+  <section id="screen-toss" class="screen">
+    <div class="card center-card">
+      <h2 class="section-title">Toss Time</h2>
+      <div class="coin" id="coin">🪙</div>
+      <p id="tossStatus" class="muted">Waiting for the call…</p>
+      <div class="btn-row" id="tossCallButtons" style="display:none;">
+        <button class="btn secondary" data-call="heads">Heads</button>
+        <button class="btn secondary" data-call="tails">Tails</button>
+      </div>
+      <div class="btn-row" id="tossDecisionButtons" style="display:none;">
+        <button class="btn primary" data-decision="bat">Choose to Bat</button>
+        <button class="btn primary" data-decision="bowl">Choose to Bowl</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: GAME ============ -->
+  <section id="screen-game" class="screen">
+    <div class="topbar">
+      <div class="brand"><span class="dot"></span> Hand Cricket</div>
+      <div class="meta">
+        <div class="room-chip">Room <b id="roomCodeLabel2">-----</b></div>
+        <div id="oversMeta">Overs: -</div>
+        <div id="matchSettingsMeta" class="match-settings-meta">Medium · 15s</div>
+      </div>
+      <button id="btnExitMatch" class="btn small outline">Exit match</button>
+    </div>
+
+    <div class="score-strip">
+      <div class="runs" id="scoreRuns">0<span id="scoreWickets">/0</span></div>
+      <div class="over-info" id="overInfo">Over 0.0</div>
+      <div class="over-info" id="targetInfo"></div>
+    </div>
+
+    <div class="arena-wrap">
+
+      <div class="panel batting" id="battingPanel">
+        <div class="panel-head">
+          <svg class="icon" viewBox="0 0 48 48" fill="none">
+            <rect x="21" y="4" width="6" height="24" rx="3" fill="#b7e2bf" transform="rotate(18 24 16)"/>
+            <rect x="16" y="26" width="16" height="14" rx="4" fill="#8b5e3c" transform="rotate(18 24 33)"/>
+          </svg>
+          <h2>Squad 1</h2>
+          <span class="role-badge" id="battingRoleBadge"></span>
+        </div>
+        <div class="player-list" id="battingListGame"></div>
+        <div class="padlabel" id="batPadLabel">Pick your shot</div>
+        <div class="numpad" id="batPad">
+          <button data-v="1">1</button>
+          <button data-v="2">2</button>
+          <button data-v="3">3</button>
+          <button data-v="4">4</button>
+          <button data-v="5">5</button>
+          <button data-v="6">6</button>
+          <button class="stroke" data-v="stroke">Stroke</button>
+        </div>
+      </div>
+
+      <div class="bench-col">
+        <div class="timer-ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="bg" cx="50" cy="50" r="42"></circle>
+            <circle class="fg" id="timerCircle" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="timer-num" id="timerNum">15</div>
+        </div>
+
+        <div class="bench">
+          <div class="callout" id="callout">Wide!</div>
+          <div class="hands" id="hands">
+            <div class="hand left" id="handLeft">
+              <div class="digit thumb"></div>
+              <div class="digit index"></div>
+              <div class="digit middle"></div>
+              <div class="digit ring"></div>
+              <div class="digit pinky"></div>
+              <div class="palm"></div>
+            </div>
+            <div class="hand right" id="handRight">
+              <div class="digit thumb"></div>
+              <div class="digit index"></div>
+              <div class="digit middle"></div>
+              <div class="digit ring"></div>
+              <div class="digit pinky"></div>
+              <div class="palm"></div>
+            </div>
+          </div>
+        </div>
+
+        <button class="shake-btn" id="shakeBtn" disabled>SHAKE</button>
+        <div class="result-banner" id="resultBanner">Waiting for the bowler…</div>
+      </div>
+
+      <div class="panel bowling" id="bowlingPanel">
+        <div class="panel-head">
+          <svg class="icon" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="14" fill="#f0bdb0"/>
+            <path d="M14 24h20M24 14v20" stroke="#7a2f22" stroke-width="1.5"/>
+          </svg>
+          <h2>Squad 2</h2>
+          <span class="role-badge" id="bowlingRoleBadge"></span>
+        </div>
+        <div class="player-list" id="bowlingListGame"></div>
+        <div class="padlabel" id="bowlPadLabel">Pick your delivery</div>
+        <div class="numpad" id="bowlPad">
+          <button data-v="1">1</button>
+          <button data-v="2">2</button>
+          <button data-v="3">3</button>
+          <button data-v="4">4</button>
+          <button data-v="5">5</button>
+          <button data-v="6">6</button>
+          <button class="stroke" data-v="stroke">Stroke</button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: GAME OVER ============ -->
+  <section id="screen-gameover" class="screen">
+    <div class="trophy-overlay show">
+      <div class="cup">🏆</div>
+      <h1 id="winnerHeading">Result</h1>
+      <p id="winnerSummary"></p>
+      <button id="btnBackToLobby">Back to lobby</button>
+    </div>
+  </section>
+
+</div>
+
+<div id="settingsToast" class="settings-toast" role="status" aria-live="polite">
+  Setting Applied Successfully
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

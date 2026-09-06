@@ -1,0 +1,458 @@
+// Hand Cricket - client
+// Talks to server.py over WebSocket. Server is authoritative for all game
+// state; this file just renders whatever it's told and forwards user input.
+
+let ws = null;
+let myPid = null;
+let isHost = false;
+let roomState = null;
+
+const $ = (sel) => document.querySelector(sel);
+const $all = (sel) => Array.from(document.querySelectorAll(sel));
+
+function showScreen(id){
+  $all('.screen').forEach(s => s.classList.remove('active'));
+  $(`#${id}`).classList.add('active');
+}
+
+// ---------------------------------------------------------------- connect --
+
+$('#btnCreateRoom').addEventListener('click', () => {
+  connectThen(() => send({ type: 'create_room', name: nameOrDefault() }));
+});
+
+$('#btnJoinRoom').addEventListener('click', () => {
+  const code = $('#joinCodeInput').value.trim().toUpperCase();
+  if (!code) { setConnectError('Enter a room code.'); return; }
+  connectThen(() => send({ type: 'join_room', code, name: nameOrDefault() }));
+});
+
+$('#btnPlayBot').addEventListener('click', () => {
+  connectThen(() => send({ type: 'play_bot', name: nameOrDefault() }));
+});
+
+function nameOrDefault(){
+  return $('#nameInput').value.trim() || 'Player';
+}
+
+function setConnectError(msg){ $('#connectError').textContent = msg; }
+
+function connectThen(afterOpenFn){
+  setConnectError('');
+  const url = $('#serverInput').value.trim();
+  if (ws) { try { ws.close(); } catch(e){} }
+  ws = new WebSocket(url);
+  ws.addEventListener('open', afterOpenFn);
+  ws.addEventListener('message', onMessage);
+  ws.addEventListener('close', () => setConnectError('Disconnected from server.'));
+  ws.addEventListener('error', () => setConnectError('Could not reach server. Check the address.'));
+}
+
+function send(payload){
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+}
+
+// ---------------------------------------------------------------- routing --
+
+function onMessage(evt){
+  const msg = JSON.parse(evt.data);
+  switch(msg.type){
+    case 'error': setConnectError(msg.message); break;
+    case 'joined': onJoined(msg); break;
+    case 'room_state': onRoomState(msg); break;
+    case 'toss_prompt': onTossPrompt(msg); break;
+    case 'toss_result': onTossResult(msg); break;
+    case 'decision_prompt': onDecisionPrompt(msg); break;
+    case 'innings_start': onInningsStart(msg); break;
+    case 'innings_break': onInningsBreak(msg); break;
+    case 'score_update': onScoreUpdate(msg); break;
+    case 'await_shake': onAwaitShake(msg); break;
+    case 'ball_start': onBallStart(msg); break;
+    case 'timer': onTimer(msg); break;
+    case 'pick_locked': onPickLocked(msg); break;
+    case 'ball_result': onBallResult(msg); break;
+    case 'game_over': onGameOver(msg); break;
+  }
+}
+
+function onJoined(msg){
+  myPid = msg.pid;
+  isHost = !!msg.is_host;
+  $('#roomCodeLabel').textContent = msg.code;
+  $('#roomCodeLabel2').textContent = msg.code;
+  showScreen('screen-lobby');
+}
+
+// ------------------------------------------------------------------ lobby --
+
+function onRoomState(msg){
+  roomState = msg;
+  if (msg.phase === 'lobby') renderLobby(msg);
+}
+
+function renderLobby(state){
+  renderSquadList('#battingSquadList', state, 'batting');
+  renderSquadList('#bowlingSquadList', state, 'bowling');
+  const me = state.players.find(player => player.id === myPid);
+  if (me && document.activeElement !== $('#lobbyNameInput')) {
+    $('#lobbyNameInput').value = me.name;
+  }
+
+  $('#oversDisplay').textContent = state.overs
+    ? `Overs set to ${state.overs}.`
+    : 'Overs not set yet.';
+  const difficulty = state.difficulty || 'medium';
+  const ballSeconds = state.ball_seconds || 15;
+  const difficultyInput = document.querySelector(`input[name="difficulty"][value="${difficulty}"]`);
+  if (difficultyInput) difficultyInput.checked = true;
+  $('#timerInput').value = ballSeconds;
+  $('#settingsDisplay').textContent = `${difficulty[0].toUpperCase()}${difficulty.slice(1)} bot, ${ballSeconds} seconds per ball.`;
+  $('#oversInput').style.display = (myPid === state.host) ? 'block' : 'none';
+  $('#btnSetOvers').style.display = (myPid === state.host) ? 'inline-block' : 'none';
+  $('#matchSettings').style.display = (myPid === state.host && !!state.overs) ? 'block' : 'none';
+  $('#btnStartMatch').style.display = (myPid === state.host) ? 'inline-block' : 'none';
+
+  const batCount = state.squads.batting.order.length;
+  const bowlCount = state.squads.bowling.order.length;
+  $('#lobbyHint').textContent = (myPid === state.host)
+    ? `${batCount} batting, ${bowlCount} bowling. Set overs, then start when ready.`
+    : `Waiting for host to start… (${batCount} batting, ${bowlCount} bowling)`;
+}
+
+function renderSquadList(sel, state, team){
+  const squad = state.squads[team];
+  const container = $(sel);
+  container.innerHTML = '';
+  squad.order.forEach(pid => {
+    const p = state.players.find(pl => pl.id === pid);
+    if (!p) return;
+    const row = document.createElement('div');
+    row.className = 'player-row' + (squad.leader === pid ? ' leader' : '');
+    row.innerHTML = `<span>${escapeHtml(p.name)}${p.is_bot ? ' 🤖' : ''}</span>` +
+      (squad.leader === pid ? '<span class="tag">LEADER</span>' : '');
+    container.appendChild(row);
+  });
+}
+
+$all('[data-team]').forEach(btn => {
+  btn.addEventListener('click', () => send({ type: 'join_team', team: btn.dataset.team }));
+});
+
+$('#btnSetOvers').addEventListener('click', () => {
+  const overs = parseInt($('#oversInput').value, 10);
+  if (overs > 0) send({ type: 'set_overs', overs });
+});
+
+function readMatchSettings(){
+  const difficulty = document.querySelector('input[name="difficulty"]:checked')?.value || 'medium';
+  const rawSeconds = parseInt($('#timerInput').value, 10);
+  const ballSeconds = Math.max(5, Math.min(Number.isFinite(rawSeconds) ? rawSeconds : 15, 15));
+  $('#timerInput').value = ballSeconds;
+  return { difficulty, ball_seconds: ballSeconds };
+}
+
+$('#btnSetSettings').addEventListener('click', () => {
+  const settings = readMatchSettings();
+  send({ type: 'set_settings', ...settings, name: $('#lobbyNameInput').value.trim() });
+  if (roomState) {
+    roomState.difficulty = settings.difficulty;
+    roomState.ball_seconds = settings.ball_seconds;
+    const me = roomState.players.find(player => player.id === myPid);
+    if (me && $('#lobbyNameInput').value.trim()) me.name = $('#lobbyNameInput').value.trim();
+  }
+  const label = settings.difficulty[0].toUpperCase() + settings.difficulty.slice(1);
+  $('#settingsDisplay').textContent = `${label} bot, ${settings.ball_seconds} seconds per ball.`;
+  updateMatchSettingsMeta();
+  showSettingsToast();
+});
+
+let settingsToastTimer = null;
+
+function showSettingsToast(){
+  const toast = $('#settingsToast');
+  toast.classList.add('show');
+  clearTimeout(settingsToastTimer);
+  settingsToastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
+}
+
+$('#btnStartMatch').addEventListener('click', () => {
+  const settings = readMatchSettings();
+  send({ type: 'start_match', ...settings, name: $('#lobbyNameInput').value.trim() });
+});
+
+$('#btnExitRoom').addEventListener('click', () => {
+  if (!window.confirm('Exit this room?')) return;
+  if (ws) ws.close();
+  location.reload();
+});
+
+// ------------------------------------------------------------------- toss --
+
+function onTossPrompt(msg){
+  showScreen('screen-toss');
+  $('#coin').classList.remove('flipping');
+  const isCaller = msg.caller_pid === myPid;
+  $('#tossStatus').textContent = isCaller
+    ? "It's your call — heads or tails?"
+    : 'Waiting for the toss call…';
+  $('#tossCallButtons').style.display = isCaller ? 'flex' : 'none';
+  $('#tossDecisionButtons').style.display = 'none';
+}
+
+$('#tossCallButtons').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-call]');
+  if (!btn) return;
+  send({ type: 'toss_call', call: btn.dataset.call });
+  $('#tossCallButtons').style.display = 'none';
+  $('#coin').classList.add('flipping');
+  $('#tossStatus').textContent = 'Flipping…';
+});
+
+function onTossResult(msg){
+  $('#coin').classList.add('flipping');
+  const winnerLabel = msg.winner_team === 'batting' ? 'Squad 1' : 'Squad 2';
+  $('#tossStatus').textContent = `${msg.result.toUpperCase()}! ${winnerLabel} won the toss.`;
+}
+
+function onDecisionPrompt(msg){
+  const isDecider = msg.leader_pid === myPid;
+  $('#tossDecisionButtons').style.display = isDecider ? 'flex' : 'none';
+  $('#tossStatus').textContent = isDecider
+    ? 'You won the toss! Choose to bat or bowl.'
+    : 'The toss winner is choosing to bat or bowl…';
+}
+
+$('#tossDecisionButtons').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-decision]');
+  if (!btn) return;
+  send({ type: 'toss_decision', decision: btn.dataset.decision });
+});
+
+// ---------------------------------------------------------------- innings --
+
+function onInningsStart(msg){
+  if (roomState) {
+    if (msg.difficulty) roomState.difficulty = msg.difficulty;
+    if (msg.ball_seconds) roomState.ball_seconds = msg.ball_seconds;
+  }
+  showScreen('screen-game');
+  updateRoleBadges(msg.bat_team, msg.bowl_team);
+  updateMatchSettingsMeta();
+}
+
+function onInningsBreak(msg){
+  $('#resultBanner').innerHTML =
+    `<b>Innings break.</b> First innings: ${msg.first_innings_score} runs. Target: ${msg.first_innings_score + 1}.`;
+  updateRoleBadges(msg.next_bat_team, msg.next_bowl_team);
+  if (msg.next_batter === myPid) {
+    $('#resultBanner').innerHTML += ' You are batting now.';
+  } else if (msg.next_bowler === myPid) {
+    $('#resultBanner').innerHTML += ' You are bowling now.';
+  }
+}
+
+function updateRoleBadges(batTeam, bowlTeam){
+  $('#battingRoleBadge').textContent = batTeam === 'batting' ? 'Batting now' : 'Bowling now';
+  $('#bowlingRoleBadge').textContent = bowlTeam === 'bowling' ? 'Bowling now' : 'Batting now';
+}
+
+function updateMatchSettingsMeta(){
+  const difficulty = roomState?.difficulty || 'medium';
+  const seconds = roomState?.ball_seconds || 15;
+  $('#matchSettingsMeta').textContent = `${difficulty[0].toUpperCase()}${difficulty.slice(1)} · ${seconds}s per ball`;
+}
+
+function onScoreUpdate(msg){
+  $('#scoreRuns').firstChild.textContent = msg.runs;
+  $('#scoreWickets').textContent = `/${msg.wickets}`;
+  const oversFace = `${Math.floor(msg.balls / 6)}.${msg.balls % 6}`;
+  $('#overInfo').textContent = `Over ${oversFace} of ${msg.overs}`;
+  $('#targetInfo').textContent = msg.target ? `Target: ${msg.target + 1}` : '';
+  $('#oversMeta').textContent = `Overs: ${msg.overs}`;
+
+  highlightActivePlayer('#battingListGame', msg.current_batter, roomState?.squads?.batting, roomState);
+  highlightActivePlayer('#bowlingListGame', msg.current_bowler, roomState?.squads?.bowling, roomState);
+}
+
+function highlightActivePlayer(sel, activePid, squad, state){
+  const container = $(sel);
+  if (!container || !squad || !state) return;
+  container.innerHTML = '';
+  squad.order.forEach(pid => {
+    const p = state.players.find(pl => pl.id === pid);
+    if (!p) return;
+    const row = document.createElement('div');
+    let cls = 'player-row';
+    if (pid === activePid) cls += ' active';
+    if (p.is_out) cls += ' out';
+    if (squad.leader === pid) cls += ' leader';
+    row.className = cls;
+    row.innerHTML = `<span>${escapeHtml(p.name)}${p.is_bot ? ' 🤖' : ''}</span>` +
+      (pid === activePid ? '<span class="tag">NOW</span>' : '');
+    container.appendChild(row);
+  });
+}
+
+// ------------------------------------------------------------------- ball --
+
+let myRoleThisBall = null; // 'batter' | 'bowler' | null
+let matchSecondsThisBall = 15;
+
+function onAwaitShake(msg){
+  resetHands();
+  $('#callout').classList.remove('show');
+  setPadEnabled('#batPad', false);
+  setPadEnabled('#bowlPad', false);
+  clearPicked();
+
+  myRoleThisBall = (msg.batter === myPid) ? 'batter' : (msg.bowler === myPid) ? 'bowler' : null;
+  $('#batPadLabel').textContent = isBotPid(msg.batter)
+    ? 'Bot is choosing automatically'
+    : (msg.batter === myPid ? 'Pick your shot' : 'Waiting for batter…');
+  $('#bowlPadLabel').textContent = isBotPid(msg.bowler)
+    ? 'Bot is choosing automatically'
+    : (msg.bowler === myPid ? 'Pick your delivery' : 'Waiting for bowler…');
+  const canShake = (msg.bowler === myPid);
+  $('#shakeBtn').disabled = !canShake;
+  $('#resultBanner').textContent = canShake
+    ? 'Tap SHAKE to start this ball.'
+    : 'Waiting for the bowler to shake…';
+}
+
+function isBotPid(pid){
+  return roomState?.players?.some(player => player.id === pid && player.is_bot) || false;
+}
+
+$('#shakeBtn').addEventListener('click', () => {
+  send({ type: 'shake' });
+  $('#shakeBtn').disabled = true;
+});
+
+function onBallStart(msg){
+  matchSecondsThisBall = msg.seconds || roomState?.ball_seconds || 15;
+  $('#timerNum').textContent = matchSecondsThisBall;
+  $('#timerCircle').style.strokeDashoffset = 0;
+  $('#hands').classList.add('shaking');
+  $('#resultBanner').textContent = 'Get ready…';
+  setTimeout(() => {
+    $('#hands').classList.remove('shaking');
+    if (myRoleThisBall === 'batter') setPadEnabled('#batPad', true);
+    if (myRoleThisBall === 'bowler') setPadEnabled('#bowlPad', true);
+    if (myRoleThisBall) $('#resultBanner').textContent = 'Pick before the timer runs out!';
+  }, 1600);
+}
+
+function onTimer(msg){
+  $('#timerNum').textContent = msg.seconds;
+  const CIRC = 264;
+  $('#timerCircle').style.strokeDashoffset = CIRC * (1 - msg.seconds / matchSecondsThisBall);
+}
+
+function onPickLocked(msg){
+  if ((msg.role === 'batter' && myRoleThisBall === 'batter') ||
+      (msg.role === 'bowler' && myRoleThisBall === 'bowler')){
+    // own pick already shown as picked locally
+  }
+}
+
+$('#batPad').addEventListener('click', (e) => handlePadClick(e, '#batPad', 'batter'));
+$('#bowlPad').addEventListener('click', (e) => handlePadClick(e, '#bowlPad', 'bowler'));
+
+function handlePadClick(e, padSel, role){
+  const btn = e.target.closest('button');
+  if (!btn || btn.disabled || myRoleThisBall !== role) return;
+  $(padSel).querySelectorAll('button').forEach(b => b.classList.remove('picked'));
+  btn.classList.add('picked');
+  setPadEnabled(padSel, false);
+  send({ type: 'pick', value: btn.dataset.v });
+}
+
+function setPadEnabled(sel, enabled){
+  $(sel).querySelectorAll('button').forEach(b => b.disabled = !enabled);
+}
+
+function clearPicked(){
+  $all('.numpad button').forEach(b => b.classList.remove('picked'));
+}
+
+function onBallResult(msg){
+  setHandPose('#handLeft', msg.batter_pick);
+  setHandPose('#handRight', msg.bowler_pick);
+
+  let label, detail;
+  if (msg.result === 'wide'){
+    label = 'WIDE!';
+    detail = 'Bowler missed the window — +1 run.';
+  } else if (msg.result === 'out'){
+    label = 'OUT!';
+    detail = (msg.batter_pick === null)
+      ? 'Batter missed the window.'
+      : `Both went with ${formatPick(msg.batter_pick)}.`;
+  } else if (msg.result === 'dot'){
+    label = 'SAFE';
+    detail = `${formatPick(msg.batter_pick)} vs ${formatPick(msg.bowler_pick)} — no run.`;
+  } else {
+    label = `+${msg.runs} RUN${msg.runs === 1 ? '' : 'S'}`;
+    detail = `${formatPick(msg.batter_pick)} vs ${formatPick(msg.bowler_pick)}.`;
+  }
+  showCallout(label);
+  $('#resultBanner').innerHTML = `<b>${label}</b> ${detail}`;
+
+  setPadEnabled('#batPad', false);
+  setPadEnabled('#bowlPad', false);
+}
+
+function formatPick(v){
+  if (v === null || v === undefined) return 'nothing';
+  return v === 'stroke' ? 'Stroke' : v;
+}
+
+function showCallout(text){
+  const el = $('#callout');
+  el.textContent = text;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+function setHandPose(sel, value){
+  const hand = $(sel);
+  if (value === null || value === undefined || value === 'stroke'){
+    hand.removeAttribute('data-pose');
+  } else {
+    hand.setAttribute('data-pose', value);
+  }
+}
+
+function resetHands(){
+  $('#handLeft').removeAttribute('data-pose');
+  $('#handRight').removeAttribute('data-pose');
+}
+
+// --------------------------------------------------------------- game over --
+
+function onGameOver(msg){
+  showScreen('screen-gameover');
+  const winnerLabel = msg.winner_team === 'batting' ? 'Squad 1'
+    : msg.winner_team === 'bowling' ? 'Squad 2'
+    : 'Nobody';
+  $('#winnerHeading').textContent = msg.winner_team ? `${winnerLabel} wins!` : "It's a tie!";
+  $('#winnerSummary').textContent =
+    `${msg.summary} — First innings: ${msg.first_innings_score}, Second innings: ${msg.second_innings_score}.`;
+}
+
+$('#btnExitMatch').addEventListener('click', () => {
+  if (!window.confirm('Exit this match?')) return;
+  if (ws) ws.close();
+  location.reload();
+});
+
+$('#btnBackToLobby').addEventListener('click', () => {
+  if (ws) ws.close();
+  location.reload();
+});
+
+// ---------------------------------------------------------------- helpers --
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
