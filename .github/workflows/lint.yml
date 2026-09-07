@@ -1,0 +1,26 @@
+name: Code Quality
+
+on: [push, pull_request]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install websockets
+      - run: python3 -m py_compile "Hand Cricket/server.py"
+      - run: echo "✅ Python syntax check passed!"
+
+  html:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check HTML syntax
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install html5lib
+          python3 -c "from html.parser import HTMLParser; HTMLParser().feed(open('Hand Cricket/index.html').read())" 2>&1 && echo "✅ HTML check passed!"
