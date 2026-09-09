@@ -57,7 +57,10 @@ function send(payload){
 function onMessage(evt){
   const msg = JSON.parse(evt.data);
   switch(msg.type){
-    case 'error': setConnectError(msg.message); break;
+    case 'error':
+      setConnectError(msg.message);
+      if (roomState?.phase === 'lobby') $('#lobbyHint').textContent = msg.message;
+      break;
     case 'joined': onJoined(msg); break;
     case 'room_state': onRoomState(msg); break;
     case 'toss_prompt': onTossPrompt(msg); break;
@@ -100,7 +103,8 @@ function renderLobby(state){
 
   $('#oversDisplay').textContent = state.overs
     ? `Overs set to ${state.overs}.`
-    : 'Overs not set yet.';
+    : '';
+  if (state.overs) $('#oversInput').value = state.overs;
   const difficulty = state.difficulty || 'medium';
   const ballSeconds = state.ball_seconds || 15;
   const difficultyInput = document.querySelector(`input[name="difficulty"][value="${difficulty}"]`);
@@ -108,14 +112,13 @@ function renderLobby(state){
   $('#timerInput').value = ballSeconds;
   $('#settingsDisplay').textContent = `${difficulty[0].toUpperCase()}${difficulty.slice(1)} bot, ${ballSeconds} seconds per ball.`;
   $('#oversInput').style.display = (myPid === state.host) ? 'block' : 'none';
-  $('#btnSetOvers').style.display = (myPid === state.host) ? 'inline-block' : 'none';
-  $('#matchSettings').style.display = (myPid === state.host && !!state.overs) ? 'block' : 'none';
+  $('#matchSettings').style.display = (myPid === state.host) ? 'flex' : 'none';
   $('#btnStartMatch').style.display = (myPid === state.host) ? 'inline-block' : 'none';
 
   const batCount = state.squads.batting.order.length;
   const bowlCount = state.squads.bowling.order.length;
   $('#lobbyHint').textContent = (myPid === state.host)
-    ? `${batCount} batting, ${bowlCount} bowling. Set overs, then start when ready.`
+    ? `${batCount} in Squad 1, ${bowlCount} in Squad 2. Apply settings, then start when ready.`
     : `Waiting for host to start… (${batCount} batting, ${bowlCount} bowling)`;
 }
 
@@ -138,17 +141,15 @@ $all('[data-team]').forEach(btn => {
   btn.addEventListener('click', () => send({ type: 'join_team', team: btn.dataset.team }));
 });
 
-$('#btnSetOvers').addEventListener('click', () => {
-  const overs = parseInt($('#oversInput').value, 10);
-  if (overs > 0) send({ type: 'set_overs', overs });
-});
-
 function readMatchSettings(){
   const difficulty = document.querySelector('input[name="difficulty"]:checked')?.value || 'medium';
   const rawSeconds = parseInt($('#timerInput').value, 10);
+  const rawOvers = parseInt($('#oversInput').value, 10);
   const ballSeconds = Math.max(5, Math.min(Number.isFinite(rawSeconds) ? rawSeconds : 15, 15));
+  const overs = Math.max(1, Math.min(Number.isFinite(rawOvers) ? rawOvers : 1, 20));
   $('#timerInput').value = ballSeconds;
-  return { difficulty, ball_seconds: ballSeconds };
+  $('#oversInput').value = overs;
+  return { difficulty, ball_seconds: ballSeconds, overs };
 }
 
 $('#btnSetSettings').addEventListener('click', () => {
@@ -161,7 +162,7 @@ $('#btnSetSettings').addEventListener('click', () => {
     if (me && $('#lobbyNameInput').value.trim()) me.name = $('#lobbyNameInput').value.trim();
   }
   const label = settings.difficulty[0].toUpperCase() + settings.difficulty.slice(1);
-  $('#settingsDisplay').textContent = `${label} bot, ${settings.ball_seconds} seconds per ball.`;
+  $('#settingsDisplay').textContent = `${settings.overs} overs, ${label} bot, ${settings.ball_seconds} seconds per ball.`;
   updateMatchSettingsMeta();
   showSettingsToast();
 });
@@ -216,10 +217,16 @@ function onTossResult(msg){
 
 function onDecisionPrompt(msg){
   const isDecider = msg.leader_pid === myPid;
-  $('#tossDecisionButtons').style.display = isDecider ? 'flex' : 'none';
+  $('#tossDecisionButtons').style.display = 'none';
   $('#tossStatus').textContent = isDecider
-    ? 'You won the toss! Choose to bat or bowl.'
-    : 'The toss winner is choosing to bat or bowl…';
+    ? 'Toss complete. Choose batting or bowling…'
+    : 'Toss complete. Opponent won and chooses batting or bowling…';
+  setTimeout(() => {
+    $('#tossDecisionButtons').style.display = isDecider ? 'flex' : 'none';
+    $('#tossStatus').textContent = isDecider
+      ? 'You won the toss! Choose batting or bowling.'
+      : 'Opponent won the toss and chooses batting or bowling…';
+  }, 1200);
 }
 
 $('#tossDecisionButtons').addEventListener('click', (e) => {
@@ -297,17 +304,24 @@ function highlightActivePlayer(sel, activePid, squad, state){
 
 let myRoleThisBall = null; // 'batter' | 'bowler' | null
 let matchSecondsThisBall = 15;
+let batterPidThisBall = null;
+let bowlerPidThisBall = null;
 
 function onAwaitShake(msg){
   resetHands();
+  moveRoleControls(msg.batter, msg.bowler);
   $('#callout').classList.remove('show');
   setPadEnabled('#batPad', false);
   setPadEnabled('#bowlPad', false);
   clearPicked();
 
+  batterPidThisBall = msg.batter;
+  bowlerPidThisBall = msg.bowler;
   myRoleThisBall = (msg.batter === myPid) ? 'batter' : (msg.bowler === myPid) ? 'bowler' : null;
+  $('#handLeftCaption').textContent = 'Squad 1 pick';
+  $('#handRightCaption').textContent = 'Squad 2 pick';
   $('#batPadLabel').textContent = isBotPid(msg.batter)
-    ? 'Bot is choosing automatically'
+    ? 'Opponent is batting automatically'
     : (msg.batter === myPid ? 'Pick your shot' : 'Waiting for batter…');
   $('#bowlPadLabel').textContent = isBotPid(msg.bowler)
     ? 'Bot is choosing automatically'
@@ -315,12 +329,26 @@ function onAwaitShake(msg){
   const canShake = (msg.bowler === myPid);
   $('#shakeBtn').disabled = !canShake;
   $('#resultBanner').textContent = canShake
-    ? 'Tap SHAKE to start this ball.'
+    ? (isBotPid(msg.batter) ? 'You are bowling. Starting the ball…' : 'You are bowling. Tap SHAKE to start this ball.')
     : 'Waiting for the bowler to shake…';
+  if (canShake && isBotPid(msg.batter)) {
+    setTimeout(() => {
+      if ($('#shakeBtn').disabled === false) $('#shakeBtn').click();
+    }, 300);
+  }
 }
 
 function isBotPid(pid){
   return roomState?.players?.some(player => player.id === pid && player.is_bot) || false;
+}
+
+function moveRoleControls(batterPid, bowlerPid){
+  const batter = roomState?.players?.find(player => player.id === batterPid);
+  const bowler = roomState?.players?.find(player => player.id === bowlerPid);
+  const batterPanel = batter?.team === 'bowling' ? '#bowlingPanel' : '#battingPanel';
+  const bowlerPanel = bowler?.team === 'bowling' ? '#bowlingPanel' : '#battingPanel';
+  $(batterPanel).appendChild($('#batControls'));
+  $(bowlerPanel).appendChild($('#bowlControls'));
 }
 
 $('#shakeBtn').addEventListener('click', () => {
@@ -332,12 +360,12 @@ function onBallStart(msg){
   matchSecondsThisBall = msg.seconds || roomState?.ball_seconds || 15;
   $('#timerNum').textContent = matchSecondsThisBall;
   $('#timerCircle').style.strokeDashoffset = 0;
+  if (myRoleThisBall === 'batter') setPadEnabled('#batPad', true);
+  if (myRoleThisBall === 'bowler') setPadEnabled('#bowlPad', true);
   $('#hands').classList.add('shaking');
   $('#resultBanner').textContent = 'Get ready…';
   setTimeout(() => {
     $('#hands').classList.remove('shaking');
-    if (myRoleThisBall === 'batter') setPadEnabled('#batPad', true);
-    if (myRoleThisBall === 'bowler') setPadEnabled('#bowlPad', true);
     if (myRoleThisBall) $('#resultBanner').textContent = 'Pick before the timer runs out!';
   }, 1600);
 }
@@ -376,8 +404,9 @@ function clearPicked(){
 }
 
 function onBallResult(msg){
-  setHandPose('#handLeft', msg.batter_pick);
-  setHandPose('#handRight', msg.bowler_pick);
+  const batterIsSquad1 = roomState?.players?.find(player => player.id === batterPidThisBall)?.team === 'batting';
+  setHandPose('#handLeft', batterIsSquad1 ? msg.batter_pick : msg.bowler_pick);
+  setHandPose('#handRight', batterIsSquad1 ? msg.bowler_pick : msg.batter_pick);
 
   let label, detail;
   if (msg.result === 'wide'){
@@ -390,10 +419,10 @@ function onBallResult(msg){
       : `Both went with ${formatPick(msg.batter_pick)}.`;
   } else if (msg.result === 'dot'){
     label = 'SAFE';
-    detail = `${formatPick(msg.batter_pick)} vs ${formatPick(msg.bowler_pick)} — no run.`;
+    detail = `Batter: ${formatPick(msg.batter_pick)} · Bowler: ${formatPick(msg.bowler_pick)} — no run.`;
   } else {
     label = `+${msg.runs} RUN${msg.runs === 1 ? '' : 'S'}`;
-    detail = `${formatPick(msg.batter_pick)} vs ${formatPick(msg.bowler_pick)}.`;
+    detail = `Batter: ${formatPick(msg.batter_pick)} · Bowler: ${formatPick(msg.bowler_pick)}.`;
   }
   showCallout(label);
   $('#resultBanner').innerHTML = `<b>${label}</b> ${detail}`;

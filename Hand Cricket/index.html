@@ -74,8 +74,7 @@
             <span>Overs (host sets this)</span>
             <input id="oversInput" type="number" min="1" max="20" value="2">
           </label>
-          <button id="btnSetOvers" class="btn small outline">Set overs</button>
-          <p class="muted" id="oversDisplay">Overs not set yet.</p>
+          <p class="muted" id="oversDisplay"></p>
           <div class="match-settings" id="matchSettings" style="display:none;">
             <label class="field small">
               <span>Bot level</span>
@@ -123,7 +122,7 @@
       </div>
       <div class="btn-row" id="tossDecisionButtons" style="display:none;">
         <button class="btn primary" data-decision="bat">Choose to Bat</button>
-        <button class="btn primary" data-decision="bowl">Choose to Bowl</button>
+        <button class="btn primary" data-decision="bowl">Choose to Ball</button>
       </div>
     </div>
   </section>
@@ -158,6 +157,7 @@
           <span class="role-badge" id="battingRoleBadge"></span>
         </div>
         <div class="player-list" id="battingListGame"></div>
+        <div class="role-controls" id="batControls">
         <div class="padlabel" id="batPadLabel">Pick your shot</div>
         <div class="numpad" id="batPad">
           <button data-v="1">1</button>
@@ -167,6 +167,7 @@
           <button data-v="5">5</button>
           <button data-v="6">6</button>
           <button class="stroke" data-v="stroke">Stroke</button>
+        </div>
         </div>
       </div>
 
@@ -189,6 +190,7 @@
               <div class="digit ring"></div>
               <div class="digit pinky"></div>
               <div class="palm"></div>
+              <div class="hand-caption" id="handLeftCaption">Batter</div>
             </div>
             <div class="hand right" id="handRight">
               <div class="digit thumb"></div>
@@ -197,6 +199,7 @@
               <div class="digit ring"></div>
               <div class="digit pinky"></div>
               <div class="palm"></div>
+              <div class="hand-caption" id="handRightCaption">Bowler</div>
             </div>
           </div>
         </div>
@@ -215,6 +218,7 @@
           <span class="role-badge" id="bowlingRoleBadge"></span>
         </div>
         <div class="player-list" id="bowlingListGame"></div>
+        <div class="role-controls" id="bowlControls">
         <div class="padlabel" id="bowlPadLabel">Pick your delivery</div>
         <div class="numpad" id="bowlPad">
           <button data-v="1">1</button>
@@ -224,6 +228,7 @@
           <button data-v="5">5</button>
           <button data-v="6">6</button>
           <button class="stroke" data-v="stroke">Stroke</button>
+        </div>
         </div>
       </div>
 

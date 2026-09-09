@@ -314,6 +314,11 @@ async def handle_set_settings(room, pid, msg):
     name = (msg.get("name") or "").strip()[:18]
     if player and not player.is_bot and name:
         player.name = name
+    try:
+        requested_overs = int(msg.get("overs", room.overs or 1))
+    except (TypeError, ValueError):
+        requested_overs = room.overs or 1
+    room.overs = max(1, min(requested_overs, 20))
     room.difficulty = difficulty
     room.ball_seconds = max(MIN_BALL_SECONDS, min(ball_seconds, MAX_BALL_SECONDS))
     await broadcast_room_state(room)
@@ -334,6 +339,11 @@ async def handle_start_match(room, pid, msg):
     except (TypeError, ValueError):
         requested_seconds = room.ball_seconds
     room.ball_seconds = max(MIN_BALL_SECONDS, min(requested_seconds, MAX_BALL_SECONDS))
+    try:
+        requested_overs = int(msg.get("overs", room.overs or 1))
+    except (TypeError, ValueError):
+        requested_overs = room.overs or 1
+    room.overs = max(1, min(requested_overs, 20))
     bat_sq, bowl_sq = room.squads["batting"], room.squads["bowling"]
     if not bat_sq.order or not bowl_sq.order:
         await send(room.players[pid].ws, {"type": "error", "message": "Both squads need at least 1 player."})
