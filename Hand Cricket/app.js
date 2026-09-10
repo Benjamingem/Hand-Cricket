@@ -72,6 +72,7 @@ function onMessage(evt){
     case 'await_shake': onAwaitShake(msg); break;
     case 'ball_start': onBallStart(msg); break;
     case 'timer': onTimer(msg); break;
+    case 'game_paused': onGamePaused(msg); break;
     case 'pick_locked': onPickLocked(msg); break;
     case 'ball_result': onBallResult(msg); break;
     case 'game_over': onGameOver(msg); break;
@@ -81,6 +82,7 @@ function onMessage(evt){
 function onJoined(msg){
   myPid = msg.pid;
   isHost = !!msg.is_host;
+  $('#btnPause').disabled = !isHost;
   $('#roomCodeLabel').textContent = msg.code;
   $('#roomCodeLabel2').textContent = msg.code;
   showScreen('screen-lobby');
@@ -90,7 +92,11 @@ function onJoined(msg){
 
 function onRoomState(msg){
   roomState = msg;
-  if (msg.phase === 'lobby') renderLobby(msg);
+  if (msg.phase === 'lobby') {
+    $('#pauseModal').classList.remove('show');
+    showScreen('screen-lobby');
+    renderLobby(msg);
+  }
 }
 
 function renderLobby(state){
@@ -118,7 +124,7 @@ function renderLobby(state){
   const batCount = state.squads.batting.order.length;
   const bowlCount = state.squads.bowling.order.length;
   $('#lobbyHint').textContent = (myPid === state.host)
-    ? `${batCount} in Squad 1, ${bowlCount} in Squad 2. Apply settings, then start when ready.`
+    ? `${batCount} in Team 1, ${bowlCount} in Team 2. Apply settings, then start when ready.`
     : `Waiting for host to start… (${batCount} batting, ${bowlCount} bowling)`;
 }
 
@@ -211,7 +217,7 @@ $('#tossCallButtons').addEventListener('click', (e) => {
 
 function onTossResult(msg){
   $('#coin').classList.add('flipping');
-  const winnerLabel = msg.winner_team === 'batting' ? 'Squad 1' : 'Squad 2';
+  const winnerLabel = msg.winner_team === 'batting' ? 'Team 1' : 'Team 2';
   $('#tossStatus').textContent = `${msg.result.toUpperCase()}! ${winnerLabel} won the toss.`;
 }
 
@@ -306,8 +312,13 @@ let myRoleThisBall = null; // 'batter' | 'bowler' | null
 let matchSecondsThisBall = 15;
 let batterPidThisBall = null;
 let bowlerPidThisBall = null;
+let ballAwaitingShake = false;
+let ballPicking = false;
+let revealTimer = null;
 
 function onAwaitShake(msg){
+  ballAwaitingShake = true;
+  ballPicking = false;
   resetHands();
   moveRoleControls(msg.batter, msg.bowler);
   $('#callout').classList.remove('show');
@@ -318,8 +329,6 @@ function onAwaitShake(msg){
   batterPidThisBall = msg.batter;
   bowlerPidThisBall = msg.bowler;
   myRoleThisBall = (msg.batter === myPid) ? 'batter' : (msg.bowler === myPid) ? 'bowler' : null;
-  $('#handLeftCaption').textContent = 'Squad 1 pick';
-  $('#handRightCaption').textContent = 'Squad 2 pick';
   $('#batPadLabel').textContent = isBotPid(msg.batter)
     ? 'Opponent is batting automatically'
     : (msg.batter === myPid ? 'Pick your shot' : 'Waiting for batter…');
@@ -357,6 +366,8 @@ $('#shakeBtn').addEventListener('click', () => {
 });
 
 function onBallStart(msg){
+  ballAwaitingShake = false;
+  ballPicking = true;
   matchSecondsThisBall = msg.seconds || roomState?.ball_seconds || 15;
   $('#timerNum').textContent = matchSecondsThisBall;
   $('#timerCircle').style.strokeDashoffset = 0;
@@ -404,6 +415,7 @@ function clearPicked(){
 }
 
 function onBallResult(msg){
+  ballPicking = false;
   const batterIsSquad1 = roomState?.players?.find(player => player.id === batterPidThisBall)?.team === 'batting';
   setHandPose('#handLeft', batterIsSquad1 ? msg.batter_pick : msg.bowler_pick);
   setHandPose('#handRight', batterIsSquad1 ? msg.bowler_pick : msg.batter_pick);
@@ -424,11 +436,40 @@ function onBallResult(msg){
     label = `+${msg.runs} RUN${msg.runs === 1 ? '' : 'S'}`;
     detail = `Batter: ${formatPick(msg.batter_pick)} · Bowler: ${formatPick(msg.bowler_pick)}.`;
   }
-  showCallout(label);
-  $('#resultBanner').innerHTML = `<b>${label}</b> ${detail}`;
+  clearTimeout(revealTimer);
+  $('#resultBanner').textContent = 'Revealing hands…';
+  revealTimer = setTimeout(() => {
+    showCallout(label);
+    $('#resultBanner').innerHTML = `<b>${label}</b> ${detail}`;
+  }, 850);
 
   setPadEnabled('#batPad', false);
   setPadEnabled('#bowlPad', false);
+}
+
+$('#btnPause').addEventListener('click', () => {
+  send({ type: 'toggle_pause' });
+  $('#pauseModal').classList.add('show');
+});
+
+$('#btnResume').addEventListener('click', () => {
+  send({ type: 'toggle_pause' });
+  $('#pauseModal').classList.remove('show');
+});
+
+$('#btnPauseExit').addEventListener('click', () => {
+  $('#pauseModal').classList.remove('show');
+  send({ type: 'return_to_lobby' });
+});
+
+function onGamePaused(msg){
+  const paused = !!msg.paused;
+  $('#btnPause').textContent = paused ? 'Resume' : 'Pause';
+  $('#resultBanner').textContent = paused ? 'Game paused' : 'Game resumed';
+  $('#hands').classList.toggle('paused', paused);
+  setPadEnabled('#batPad', !paused && ballPicking && myRoleThisBall === 'batter' && !document.querySelector('#batPad .picked'));
+  setPadEnabled('#bowlPad', !paused && ballPicking && myRoleThisBall === 'bowler' && !document.querySelector('#bowlPad .picked'));
+  $('#shakeBtn').disabled = paused || !ballAwaitingShake || myRoleThisBall !== 'bowler';
 }
 
 function formatPick(v){
@@ -461,8 +502,8 @@ function resetHands(){
 
 function onGameOver(msg){
   showScreen('screen-gameover');
-  const winnerLabel = msg.winner_team === 'batting' ? 'Squad 1'
-    : msg.winner_team === 'bowling' ? 'Squad 2'
+  const winnerLabel = msg.winner_team === 'batting' ? 'Team 1'
+    : msg.winner_team === 'bowling' ? 'Team 2'
     : 'Nobody';
   $('#winnerHeading').textContent = msg.winner_team ? `${winnerLabel} wins!` : "It's a tie!";
   $('#winnerSummary').textContent =
@@ -470,9 +511,7 @@ function onGameOver(msg){
 }
 
 $('#btnExitMatch').addEventListener('click', () => {
-  if (!window.confirm('Exit this match?')) return;
-  if (ws) ws.close();
-  location.reload();
+  $('#pauseModal').classList.add('show');
 });
 
 $('#btnBackToLobby').addEventListener('click', () => {

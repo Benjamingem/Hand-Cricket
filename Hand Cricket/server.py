@@ -1,8 +1,8 @@
 """
 Hand Cricket - Multiplayer Game Server
 ---------------------------------------
-Authoritative WebSocket server. Handles room codes, squad joining (Squad 1 /
-Squad 2, up to 10 players + 1 leader each), a bot opponent fallback,
+Authoritative WebSocket server. Handles room codes, team joining (Team 1 /
+Team 2, up to 10 players + 1 leader each), a bot opponent fallback,
 toss, overs setup, and ball-by-ball resolution.
 
 Run:
@@ -18,7 +18,7 @@ RULE SET (placeholder / adjust freely in resolve_ball()):
   - Bowler fails to pick within 15s              -> WIDE (+1 run, ball replayed)
   - Batter fails to pick within 15s              -> OUT (missed the ball)
 
-Two squads are fixed identities ("Squad 1" / "Squad 2") formed at
+Two teams are fixed identities ("Team 1" / "Team 2") formed at
 join time. The toss decides who actually bats / bowls first each match; roles
 swap for the second innings regardless of squad name.
 """
@@ -77,8 +77,8 @@ class Room:
         self.host = host_pid
         self.players = {}   # pid -> Player
         self.squads = {
-            "batting": Squad("batting", "Squad 1"),
-            "bowling": Squad("bowling", "Squad 2"),
+            "batting": Squad("batting", "Team 1"),
+            "bowling": Squad("bowling", "Team 2"),
         }
         self.overs = None
         self.phase = "lobby"   # lobby, toss, decision, innings, break, gameover
@@ -93,6 +93,9 @@ class Room:
         self.difficulty = "medium"
         self.ball_seconds = DEFAULT_BALL_SECONDS
         self.bot_mode = False
+        self.paused = False
+        self.pause_event = asyncio.Event()
+        self.pause_event.set()
         self.lock = asyncio.Lock()
 
     def squad_of(self, pid):
@@ -118,6 +121,7 @@ class Room:
             },
             "bat_team": self.bat_team,
             "bowl_team": self.bowl_team,
+            "paused": self.paused,
             "toss": self.toss,
         }
 
@@ -397,6 +401,8 @@ async def start_innings(room, decision, team):
     room.innings_no = 1
     room.innings = {"runs": 0, "wickets": 0, "balls": 0, "bat_idx": 0, "bowl_idx": 0}
     room.phase = "innings"
+    room.paused = False
+    room.pause_event.set()
     await broadcast_room_state(room)
     await broadcast(room, room.score_payload())
     await broadcast(room, {"type": "innings_start", "innings_no": 1,
@@ -420,6 +426,7 @@ async def prompt_next_ball(room):
 
 async def bot_shake(room):
     await asyncio.sleep(random.uniform(1.0, 2.0))
+    await room.pause_event.wait()
     if room.ball["stage"] == "await_shake":
         await handle_shake(room, room.ball["bowler"])
 
@@ -449,6 +456,7 @@ async def bot_pick(room, pid):
     }
     delay_range = delay_ranges[room.difficulty]
     await asyncio.sleep(random.uniform(*delay_range))
+    await room.pause_event.wait()
     if room.ball["stage"] == "picking" and pid not in room.ball["picks"]:
         opponent_role = "bowler" if pid == room.ball["batter"] else "batter"
         opponent_pick = room.ball["picks"].get(opponent_role)
@@ -460,6 +468,7 @@ async def bot_pick(room, pid):
 
 async def ball_timer(room):
     for remaining in range(room.ball_seconds, -1, -1):
+        await room.pause_event.wait()
         if room.ball["stage"] != "picking":
             return
         await broadcast(room, {"type": "timer", "seconds": remaining})
@@ -485,6 +494,38 @@ async def handle_pick(room, pid, value, internal=False):
         if room.ball["timer_task"]:
             room.ball["timer_task"].cancel()
         await resolve_ball(room)
+
+
+async def toggle_pause(room, pid):
+    if pid != room.host or room.phase != "innings":
+        return
+    room.paused = not room.paused
+    if room.paused:
+        room.pause_event.clear()
+    else:
+        room.pause_event.set()
+    await broadcast(room, {"type": "game_paused", "paused": room.paused})
+
+
+async def return_to_lobby(room, pid):
+    if pid not in room.players or room.phase not in {"innings", "break", "gameover"}:
+        return
+    if room.ball.get("timer_task"):
+        room.ball["timer_task"].cancel()
+    room.phase = "lobby"
+    room.paused = False
+    room.pause_event.set()
+    room.toss = {}
+    room.bat_team = None
+    room.bowl_team = None
+    room.innings_no = 0
+    room.innings = {}
+    room.first_innings_score = None
+    room.ball = {"stage": "idle", "batter": None, "bowler": None,
+                 "picks": {}, "timer_task": None, "seconds": room.ball_seconds}
+    for player in room.all_players():
+        player.is_out = False
+    await broadcast_room_state(room)
 
 
 async def resolve_ball(room):
@@ -656,6 +697,10 @@ async def handler(ws):
                         await handle_shake(room, pid)
                     elif mtype == "pick":
                         await handle_pick(room, pid, msg.get("value"))
+                    elif mtype == "toggle_pause":
+                        await toggle_pause(room, pid)
+                    elif mtype == "return_to_lobby":
+                        await return_to_lobby(room, pid)
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:

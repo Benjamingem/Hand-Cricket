@@ -34,11 +34,11 @@ client/
 - **Create room** → get a 5-character room code → share it with friends.
 - **Join room** → enter that code.
 - **Play vs Bot** → instantly starts a 1-human-vs-1-bot match, no code needed.
-- In the lobby, everyone joins either **Squad 1** or **Squad 2** (max 10 each).
+- In the lobby, everyone joins either **Team 1** or **Team 2** (max 10 each).
   First person into a squad becomes its leader
   (shown with a crown/LEADER tag).
 - The room host sets the number of overs and starts the match.
-- **Toss**: Squad 1's leader calls heads/tails. Whoever wins picks
+- **Toss**: Team 1's leader calls heads/tails. Whoever wins picks
   to bat or bowl first. Roles fully swap for the second innings, regardless
   of squad name — squads are fixed identities, but who's *actually* batting
   vs bowling each innings is decided by the toss.

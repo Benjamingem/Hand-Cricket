@@ -40,6 +40,33 @@ body{
 .screen{ display:none; min-height: 100vh; flex-direction: column; }
 .screen.active{ display:flex; }
 
+.pause-modal{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(10,18,13,.72);
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transition:opacity .2s ease, visibility .2s ease;
+  z-index:20;
+}
+.pause-modal.show{ opacity:1; visibility:visible; pointer-events:auto; }
+.pause-modal-card{
+  width:min(340px,100%);
+  padding:26px;
+  text-align:center;
+  background:var(--wood-dark);
+  border:1px solid rgba(242,239,228,.25);
+  border-radius:12px;
+  box-shadow:0 18px 45px rgba(0,0,0,.4);
+}
+.pause-modal-card h2{ margin:0 0 20px; font-family:'Baloo 2', cursive; font-size:25px; }
+.pause-modal-actions{ display:flex; justify-content:center; gap:12px; }
+
 .center-card{
   margin: auto;
   max-width: 380px;
@@ -323,11 +350,11 @@ body{
    HANDS — each digit is toggled between "curled" (default) and an
    "extended-N" pose via classes set from JS based on the picked value.
    =================================================================== */
-.hands{ position:relative; display:flex; align-items:flex-end; justify-content:center; gap: 40px; z-index: 2; height: 150px; }
+.hands{ position:relative; display:flex; align-items:flex-end; justify-content:center; gap: 40px; z-index: 2; height: 164px; }
 
 .hand{
   position: relative;
-  width: 90px; height: 140px;
+  width: 106px; height: 154px;
   transition: transform .2s ease;
 }
 .hand.right{ transform: scaleX(-1); }
@@ -337,40 +364,46 @@ body{
 @keyframes shakeR{ 0%,100%{ transform: scaleX(-1) translateY(0) rotate(0); } 50%{ transform: scaleX(-1) translateY(-16px) rotate(-8deg); } }
 
 .palm{
-  position:absolute; left: 15px; bottom: 0; width: 60px; height: 62px;
-  background: var(--skin);
-  border-radius: 30px 30px 26px 26px;
-  box-shadow: 0 6px 8px rgba(0,0,0,.35);
+  position:absolute; left: 15px; bottom: 8px; width: 76px; height: 76px;
+  background: linear-gradient(145deg, #f0c49b 0%, var(--skin) 54%, #c98c5d 100%);
+  border-radius: 44% 48% 36% 38%;
+  box-shadow: inset -7px -8px 10px rgba(132, 72, 38, .2), inset 7px 7px 11px rgba(255, 235, 208, .35), 0 8px 10px rgba(0,0,0,.35);
+  z-index: 1;
 }
-.hand.right .palm{ background: var(--skin-dark); }
-.hand-caption{
+.hand.right .palm{ background: linear-gradient(145deg, #e1a978 0%, var(--skin-dark) 54%, #a9653d 100%); }
+.hand::after{
+  content:'';
   position:absolute;
-  left:50%;
-  bottom:-24px;
-  transform:translateX(-50%);
-  color:var(--chalk-dim);
-  font-size:11px;
-  white-space:nowrap;
+  left: 29px;
+  bottom: -10px;
+  width: 48px;
+  height: 34px;
+  border-radius: 10px 10px 16px 16px;
+  background: linear-gradient(90deg, #c98d5e, var(--skin), #d7a071);
+  box-shadow: inset -5px -4px 7px rgba(132, 72, 38, .18), 0 5px 8px rgba(0,0,0,.25);
+  z-index: 0;
 }
 
 .digit{
   position:absolute;
   bottom: 46px;
-  width: 15px;
-  border-radius: 8px;
-  background: var(--skin);
+  width: 17px;
+  border-radius: 10px 10px 7px 7px;
+  background: linear-gradient(90deg, #c98d5e, #f0c49b 48%, #d89c6c);
+  box-shadow: inset 2px 2px 3px rgba(255, 238, 214, .45), inset -2px -2px 3px rgba(122, 67, 37, .22), 0 3px 4px rgba(0,0,0,.2);
   transform-origin: bottom center;
   transition: transform .35s cubic-bezier(.34,1.4,.64,1), height .35s ease, opacity .2s ease;
+  z-index: 2;
 }
-.hand.right .digit{ background: var(--skin-dark); }
+.hand.right .digit{ background: linear-gradient(90deg, #aa6c45, #e1a978 48%, #bf7d50); }
 
-.digit.index{ left: 16px; height: 14px; transform: scaleY(0.15) translateY(2px); }
-.digit.middle{ left: 33px; height: 14px; transform: scaleY(0.15) translateY(2px); }
-.digit.ring{ left: 50px; height: 14px; transform: scaleY(0.15) translateY(2px); }
-.digit.pinky{ left: 65px; width: 12px; height: 12px; transform: scaleY(0.15) translateY(2px); }
+.digit.index{ left: 19px; height: 21px; transform: rotate(-3deg) scaleY(.32) translateY(1px); }
+.digit.middle{ left: 38px; height: 22px; transform: scaleY(.32) translateY(1px); }
+.digit.ring{ left: 57px; height: 21px; transform: rotate(3deg) scaleY(.32) translateY(1px); }
+.digit.pinky{ left: 74px; width: 14px; height: 19px; transform: rotate(8deg) scaleY(.32) translateY(1px); }
 .digit.thumb{
-  left: 2px; bottom: 34px; width: 16px; height: 30px;
-  transform: rotate(55deg) scaleY(0.4);
+  left: 4px; bottom: 36px; width: 19px; height: 35px;
+  transform: rotate(55deg) scaleY(.48);
   transform-origin: bottom left;
 }
 
@@ -382,17 +415,76 @@ body{
 .hand[data-pose="5"] .digit.index, .hand[data-pose="5"] .digit.middle, .hand[data-pose="5"] .digit.ring, .hand[data-pose="5"] .digit.pinky{
   transform: scaleY(1) translateY(-42px);
 }
-.hand[data-pose="1"] .digit.index{ height: 46px; }
-.hand[data-pose="2"] .digit.index, .hand[data-pose="2"] .digit.middle{ height: 50px; }
-.hand[data-pose="3"] .digit.index, .hand[data-pose="3"] .digit.middle, .hand[data-pose="3"] .digit.ring{ height: 48px; }
-.hand[data-pose="4"] .digit.index, .hand[data-pose="4"] .digit.middle, .hand[data-pose="4"] .digit.ring, .hand[data-pose="4"] .digit.pinky{ height: 46px; }
-.hand[data-pose="5"] .digit.index, .hand[data-pose="5"] .digit.middle, .hand[data-pose="5"] .digit.ring, .hand[data-pose="5"] .digit.pinky{ height: 46px; }
-.hand[data-pose="5"] .digit.thumb{ transform: rotate(20deg) scaleY(1); height: 34px; }
+.hand[data-pose="1"] .digit.index{
+  height: 58px;
+  transform: rotate(-8deg) scaleY(1) translateY(-49px);
+}
+.hand[data-pose="2"] .digit.index, .hand[data-pose="2"] .digit.middle{
+  height: 62px;
+  transform: scaleY(1) translateY(-51px);
+}
+.hand[data-pose="3"] .digit.index{
+  height: 58px;
+  transform: rotate(-10deg) scaleY(1) translateY(-49px);
+  transition-delay: .05s;
+}
+.hand[data-pose="3"] .digit.middle{
+  height: 64px;
+  transform: rotate(-2deg) scaleY(1) translateY(-53px);
+  transition-delay: .12s;
+}
+.hand[data-pose="3"] .digit.ring{
+  height: 58px;
+  transform: rotate(9deg) scaleY(1) translateY(-49px);
+  transition-delay: .19s;
+}
+.hand[data-pose="5"] .digit.index{
+  left: 12px;
+  transform: rotate(-20deg) scaleY(1) translateY(-52px);
+  height: 62px;
+  transition-delay: .08s;
+}
+.hand[data-pose="5"] .digit.middle{
+  left: 34px;
+  transform: rotate(-8deg) scaleY(1) translateY(-54px);
+  height: 66px;
+  transition-delay: .15s;
+}
+.hand[data-pose="5"] .digit.ring{
+  left: 58px;
+  transform: rotate(8deg) scaleY(1) translateY(-52px);
+  height: 62px;
+  transition-delay: .22s;
+}
+.hand[data-pose="5"] .digit.pinky{
+  left: 79px;
+  transform: rotate(22deg) scaleY(1) translateY(-46px);
+  height: 54px;
+  transition-delay: .29s;
+}
+.hand[data-pose="5"] .digit.thumb{
+  left: -45px;
+  bottom: 23px;
+  transform: rotate(66deg) scaleY(1) translate(0, 0);
+  height: 54px;
+  transition-delay: .37s;
+}
+.hand[data-pose="5"] .palm{
+  width: 82px;
+  height: 82px;
+  border-radius: 42% 46% 32% 35%;
+  transform: translateY(-3px) scale(1.03);
+  transition: transform .5s cubic-bezier(.2,.9,.25,1.2), width .45s ease, height .45s ease;
+}
+.hand[data-pose="4"] .digit.index, .hand[data-pose="4"] .digit.middle, .hand[data-pose="4"] .digit.ring, .hand[data-pose="4"] .digit.pinky{
+  height: 58px;
+  transform: scaleY(1) translateY(-49px);
+}
 
 /* six = thumbs-up gesture: fingers curled, thumb extended pointing straight up */
 .hand[data-pose="6"] .digit.thumb{
-  transform: rotate(-70deg) translate(4px, -18px) scaleY(1);
-  height: 42px;
+  transform: rotate(-70deg) translate(4px, -22px) scaleY(1);
+  height: 56px;
   left: -2px;
 }
 
