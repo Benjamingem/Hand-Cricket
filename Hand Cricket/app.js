@@ -10,6 +10,12 @@ let roomState = null;
 const $ = (sel) => document.querySelector(sel);
 const $all = (sel) => Array.from(document.querySelectorAll(sel));
 
+if (window.location.protocol === 'https:') {
+  $('#serverInput').value = `wss://${window.location.host}`;
+} else if (window.location.hostname && window.location.hostname !== 'localhost') {
+  $('#serverInput').value = `ws://${window.location.host}`;
+}
+
 function showScreen(id){
   $all('.screen').forEach(s => s.classList.remove('active'));
   $(`#${id}`).classList.add('active');

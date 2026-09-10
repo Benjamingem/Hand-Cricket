@@ -25,11 +25,16 @@ swap for the second innings regardless of squad name.
 
 import asyncio
 import json
+import mimetypes
+import os
 import random
 import string
 import uuid
+from pathlib import Path
 
 import websockets
+from websockets.datastructures import Headers
+from websockets.http11 import Response
 
 DEFAULT_BALL_SECONDS = 15
 MIN_BALL_SECONDS = 5
@@ -40,6 +45,20 @@ ALL_PICKS = NUMERIC + ["stroke"]
 MAX_PER_TEAM = 10
 
 ROOMS = {}  # code -> Room
+CLIENT_DIR = Path(__file__).parent / "client"
+
+
+async def serve_client(connection, request):
+    if request.headers.get("Upgrade", "").lower() == "websocket":
+        return None
+    path = request.path.split("?", 1)[0]
+    relative_path = "index.html" if path in {"", "/"} else path.lstrip("/")
+    file_path = (CLIENT_DIR / relative_path).resolve()
+    if CLIENT_DIR not in file_path.parents or not file_path.is_file():
+        return Response(404, "Not Found", Headers({"Content-Type": "text/plain"}), b"Not found")
+    body = file_path.read_bytes()
+    content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+    return Response(200, "OK", Headers({"Content-Type": content_type}), body)
 
 
 def gen_code():
@@ -741,8 +760,10 @@ async def handler(ws):
 
 
 async def main():
-    async with websockets.serve(handler, "0.0.0.0", 8765, max_size=2**20):
-        print("Hand Cricket server running on ws://0.0.0.0:8765")
+    port = int(os.environ.get("PORT", "8765"))
+    async with websockets.serve(handler, "0.0.0.0", port,
+                                max_size=2**20, process_request=serve_client):
+        print(f"Hand Cricket server running on port {port}")
         await asyncio.Future()
 
 
