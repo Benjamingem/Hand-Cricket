@@ -52,7 +52,7 @@ client/
 | Situation | Result |
 |---|---|
 | Batter & bowler pick the same number | **Out** |
-| Either side picks "Stroke" (no match) | Dot ball, no run |
+| Either side picks "Stroke" (no match) | The other side's number is scored |
 | Different numbers | Runs = batter's number |
 | Bowler doesn't pick in time | **Wide**, +1 run, ball replayed |
 | Batter doesn't pick in time | **Out** (missed it) |

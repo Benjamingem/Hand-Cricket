@@ -582,7 +582,10 @@ async def resolve_ball(room):
         outcome = {"result": "out", "runs": 0, "wicket": True, "ball_counts": True}
         _mark_out(room)
     elif batter_pick == "stroke" or bowler_pick == "stroke":
-        outcome = {"result": "dot", "runs": 0, "wicket": False, "ball_counts": True}
+        numeric_pick = bowler_pick if batter_pick == "stroke" else batter_pick
+        runs = int(numeric_pick)
+        i["runs"] += runs
+        outcome = {"result": "runs", "runs": runs, "wicket": False, "ball_counts": True}
     else:
         runs = int(batter_pick)
         i["runs"] += runs
