@@ -355,29 +355,31 @@ async def handle_start_match(room, pid, msg):
     if not room.overs:
         await send(room.players[pid].ws, {"type": "error", "message": "Set the number of overs first."})
         return
-    if room.bot_mode:
-        await start_innings(room, decision="bat", team="batting")
-        return
     room.phase = "toss"
-    room.toss = {"caller_team": "batting", "caller_pid": bat_sq.leader, "call": None, "result": None, "winner_team": None}
+    room.toss = {"caller_team": None, "caller_pid": None, "call": None, "result": None, "winner_team": None}
     await broadcast_room_state(room)
-    await broadcast(room, {"type": "toss_prompt", "caller_pid": bat_sq.leader, "caller_team": "batting"})
-    caller = room.players[bat_sq.leader]
-    if caller.is_bot:
-        asyncio.create_task(bot_toss_call(room))
+    await broadcast(room, {"type": "toss_prompt", "caller_pid": None, "caller_team": None})
 
 
 async def bot_toss_call(room):
     await asyncio.sleep(1.2)
-    await resolve_toss_call(room, random.choice(["heads", "tails"]))
+    await resolve_toss_call(room, room.squads["batting"].leader, random.choice(["heads", "tails"]))
 
 
-async def resolve_toss_call(room, call):
+async def resolve_toss_call(room, pid, call):
+    player = room.players.get(pid)
+    if call not in {"heads", "tails"} or room.phase != "toss" or not player or not player.team:
+        return
+    if player.id != room.squads[player.team].leader or room.toss.get("caller_pid") is not None:
+        return
     actual = random.choice(["heads", "tails"])
-    caller_team = room.toss["caller_team"]
+    caller_team = player.team
     other_team = "bowling" if caller_team == "batting" else "batting"
     winner_team = caller_team if call == actual else other_team
-    room.toss.update({"call": call, "result": actual, "winner_team": winner_team})
+    opponent_call = "tails" if call == "heads" else "heads"
+    room.toss.update({"caller_team": caller_team, "caller_pid": pid,
+                      "call": call, "opponent_call": opponent_call,
+                      "result": actual, "winner_team": winner_team})
     room.phase = "decision"
     await broadcast(room, {"type": "toss_result", **room.toss})
     await broadcast_room_state(room)
@@ -497,7 +499,7 @@ async def handle_pick(room, pid, value, internal=False):
 
 
 async def toggle_pause(room, pid):
-    if pid != room.host or room.phase != "innings":
+    if pid not in room.players or room.phase != "innings":
         return
     room.paused = not room.paused
     if room.paused:
@@ -508,7 +510,7 @@ async def toggle_pause(room, pid):
 
 
 async def return_to_lobby(room, pid):
-    if pid not in room.players or room.phase not in {"innings", "break", "gameover"}:
+    if pid not in room.players or room.phase == "lobby":
         return
     if room.ball.get("timer_task"):
         room.ball["timer_task"].cancel()
@@ -526,6 +528,17 @@ async def return_to_lobby(room, pid):
     for player in room.all_players():
         player.is_out = False
     await broadcast_room_state(room)
+
+
+async def exit_match(room, pid):
+    if pid != room.host or room.phase not in {"innings", "break", "gameover"}:
+        return
+    if room.ball.get("timer_task"):
+        room.ball["timer_task"].cancel()
+    room.phase = "lobby"
+    room.paused = False
+    room.pause_event.set()
+    await broadcast(room, {"type": "return_home"})
 
 
 async def resolve_ball(room):
@@ -687,8 +700,7 @@ async def handler(ws):
                     elif mtype == "start_match":
                         await handle_start_match(room, pid, msg)
                     elif mtype == "toss_call":
-                        if pid == room.toss.get("caller_pid"):
-                            await resolve_toss_call(room, msg.get("call"))
+                        await resolve_toss_call(room, pid, msg.get("call"))
                     elif mtype == "toss_decision":
                         winner_team = room.toss.get("winner_team")
                         if winner_team and pid == room.squads[winner_team].leader:
@@ -701,6 +713,8 @@ async def handler(ws):
                         await toggle_pause(room, pid)
                     elif mtype == "return_to_lobby":
                         await return_to_lobby(room, pid)
+                    elif mtype == "exit_match":
+                        await exit_match(room, pid)
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:

@@ -113,12 +113,16 @@
   <!-- ============ SCREEN: TOSS ============ -->
   <section id="screen-toss" class="screen">
     <div class="card center-card">
-      <h2 class="section-title">Toss Time</h2>
+      <h2 class="section-title">Choose Heads or Tails</h2>
       <div class="coin" id="coin">🪙</div>
       <p id="tossStatus" class="muted">Waiting for the call…</p>
+      <div class="toss-assignments" aria-live="polite">
+        <div id="team1Toss">Team 1: waiting</div>
+        <div id="team2Toss">Team 2: waiting</div>
+      </div>
       <div class="btn-row" id="tossCallButtons" style="display:none;">
-        <button class="btn secondary" data-call="heads">Heads</button>
-        <button class="btn secondary" data-call="tails">Tails</button>
+        <button class="btn secondary" data-call="heads">HEADS</button>
+        <button class="btn secondary" data-call="tails">TAILS</button>
       </div>
       <div class="btn-row" id="tossDecisionButtons" style="display:none;">
         <button class="btn primary" data-decision="bat">Choose to Bat</button>
@@ -138,7 +142,6 @@
       </div>
       <div class="meta">
         <button id="btnPause" class="btn small outline" disabled>Pause</button>
-        <button id="btnExitMatch" class="btn small outline">Exit match</button>
       </div>
     </div>
 

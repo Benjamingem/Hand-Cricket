@@ -39,6 +39,21 @@ body{
 /* ---------- screens ---------- */
 .screen{ display:none; min-height: 100vh; flex-direction: column; }
 .screen.active{ display:flex; }
+.toss-assignments{
+  display:grid;
+  gap:6px;
+  margin:12px auto 16px;
+  min-width:220px;
+  padding:10px 14px;
+  border:1px solid rgba(242,239,228,.18);
+  border-radius:10px;
+  color:var(--chalk-dim);
+  font-size:13px;
+  text-align:left;
+}
+.toss-assignments.show{ display:grid; }
+.toss-assignments:not(.show){ display:none; }
+.toss-assignments div{ display:flex; justify-content:space-between; }
 
 .pause-modal{
   position:fixed;

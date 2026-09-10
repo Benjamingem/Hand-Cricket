@@ -73,6 +73,7 @@ function onMessage(evt){
     case 'ball_start': onBallStart(msg); break;
     case 'timer': onTimer(msg); break;
     case 'game_paused': onGamePaused(msg); break;
+    case 'return_home': location.reload(); break;
     case 'pick_locked': onPickLocked(msg); break;
     case 'ball_result': onBallResult(msg); break;
     case 'game_over': onGameOver(msg); break;
@@ -82,7 +83,7 @@ function onMessage(evt){
 function onJoined(msg){
   myPid = msg.pid;
   isHost = !!msg.is_host;
-  $('#btnPause').disabled = !isHost;
+  $('#btnPause').disabled = false;
   $('#roomCodeLabel').textContent = msg.code;
   $('#roomCodeLabel2').textContent = msg.code;
   showScreen('screen-lobby');
@@ -96,6 +97,20 @@ function onRoomState(msg){
     $('#pauseModal').classList.remove('show');
     showScreen('screen-lobby');
     renderLobby(msg);
+  } else if (msg.phase === 'toss' || msg.phase === 'decision') {
+    showScreen('screen-toss');
+    if (msg.phase === 'toss' && msg.toss?.caller_pid) {
+      onTossPrompt(msg.toss);
+    } else if (msg.phase === 'decision' && msg.toss?.winner_team) {
+      onDecisionPrompt({
+        team: msg.toss.winner_team,
+        leader_pid: msg.squads[msg.toss.winner_team]?.leader,
+      });
+    }
+  } else if (msg.phase === 'innings' || msg.phase === 'break') {
+    showScreen('screen-game');
+    updateRoleBadges(msg.bat_team, msg.bowl_team);
+    updateMatchSettingsMeta();
   }
 }
 
@@ -128,6 +143,11 @@ function renderLobby(state){
     : `Waiting for host to start… (${batCount} batting, ${bowlCount} bowling)`;
 }
 
+$('#lobbyNameInput').addEventListener('change', () => {
+  const name = $('#lobbyNameInput').value.trim();
+  if (name) send({ type: 'set_name', name });
+});
+
 function renderSquadList(sel, state, team){
   const squad = state.squads[team];
   const container = $(sel);
@@ -144,7 +164,11 @@ function renderSquadList(sel, state, team){
 }
 
 $all('[data-team]').forEach(btn => {
-  btn.addEventListener('click', () => send({ type: 'join_team', team: btn.dataset.team }));
+  btn.addEventListener('click', () => {
+    const name = $('#lobbyNameInput').value.trim();
+    if (name) send({ type: 'set_name', name });
+    send({ type: 'join_team', team: btn.dataset.team });
+  });
 });
 
 function readMatchSettings(){
@@ -198,19 +222,24 @@ $('#btnExitRoom').addEventListener('click', () => {
 function onTossPrompt(msg){
   showScreen('screen-toss');
   $('#coin').classList.remove('flipping');
-  const isCaller = msg.caller_pid === myPid;
-  $('#tossStatus').textContent = isCaller
-    ? "It's your call — heads or tails?"
-    : 'Waiting for the toss call…';
-  $('#tossCallButtons').style.display = isCaller ? 'flex' : 'none';
+  $('.toss-assignments').classList.remove('show');
+  $('#team1Toss').textContent = 'Team 1: waiting';
+  $('#team2Toss').textContent = 'Team 2: waiting';
+  const canCall = !msg.caller_pid || msg.caller_pid === myPid;
+  $('#tossStatus').textContent = canCall
+    ? 'Choose Heads or Tails. The first valid choice starts the toss.'
+    : 'The other team is choosing Heads or Tails…';
+  $('#tossCallButtons').style.display = 'flex';
+  $('#tossCallButtons').querySelectorAll('button').forEach(button => {
+    button.disabled = !canCall;
+  });
   $('#tossDecisionButtons').style.display = 'none';
 }
 
 $('#tossCallButtons').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-call]');
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
   send({ type: 'toss_call', call: btn.dataset.call });
-  $('#tossCallButtons').style.display = 'none';
   $('#coin').classList.add('flipping');
   $('#tossStatus').textContent = 'Flipping…';
 });
@@ -218,7 +247,18 @@ $('#tossCallButtons').addEventListener('click', (e) => {
 function onTossResult(msg){
   $('#coin').classList.add('flipping');
   const winnerLabel = msg.winner_team === 'batting' ? 'Team 1' : 'Team 2';
-  $('#tossStatus').textContent = `${msg.result.toUpperCase()}! ${winnerLabel} won the toss.`;
+  const team1Call = msg.caller_team === 'batting' ? msg.call : msg.opponent_call;
+  const team2Call = msg.caller_team === 'bowling' ? msg.call : msg.opponent_call;
+  $('.toss-assignments').classList.add('show');
+  $('#team1Toss').textContent = `Team 1: ${team1Call.toUpperCase()}`;
+  $('#team2Toss').textContent = `Team 2: ${team2Call.toUpperCase()}`;
+  $('#tossCallButtons').querySelectorAll('button').forEach(button => {
+    button.disabled = true;
+  });
+  const isCaller = roomState?.players?.find(player => player.id === myPid)?.team === msg.caller_team;
+  const ownCall = isCaller ? msg.call : msg.opponent_call;
+  const otherCall = isCaller ? msg.opponent_call : msg.call;
+  $('#tossStatus').textContent = `${ownCall.toUpperCase()} for you, ${otherCall.toUpperCase()} for the opponent. ${msg.result.toUpperCase()}! ${winnerLabel} won the toss.`;
 }
 
 function onDecisionPrompt(msg){
@@ -509,10 +549,6 @@ function onGameOver(msg){
   $('#winnerSummary').textContent =
     `${msg.summary} — First innings: ${msg.first_innings_score}, Second innings: ${msg.second_innings_score}.`;
 }
-
-$('#btnExitMatch').addEventListener('click', () => {
-  $('#pauseModal').classList.add('show');
-});
 
 $('#btnBackToLobby').addEventListener('click', () => {
   if (ws) ws.close();
