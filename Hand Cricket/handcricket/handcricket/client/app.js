@@ -561,6 +561,10 @@ $('#btnBackToLobby').addEventListener('click', () => {
   location.reload();
 });
 
+$('#btnBackToRoom').addEventListener('click', () => {
+  send({ type: 'return_to_lobby' });
+});
+
 // ---------------------------------------------------------------- helpers --
 
 function escapeHtml(s){
