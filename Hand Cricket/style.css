@@ -13,7 +13,7 @@
   --ink: #1b2b22;
   --bat-accent: #4f8a5b;
   --bowl-accent: #b25b4a;
-  --panel-bg: rgba(20, 34, 26, 0.55);
+  --panel-bg: rgba(20, 34, 26, 0.72);
   --skin: #e3b48a;
   --skin-dark: #c98d5e;
 }
@@ -29,9 +29,14 @@ html,body{
 
 body{
   background-image:
+    linear-gradient(rgba(12, 24, 18, .62), rgba(12, 24, 18, .62)),
+    url('classroom-background.jpg'),
     repeating-linear-gradient(0deg, transparent 0 78px, var(--floor-line) 78px 80px),
     repeating-linear-gradient(90deg, transparent 0 78px, var(--floor-line) 78px 80px);
   background-color: var(--floor);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
 }
 
 .stage{ position: relative; width: 100%; min-height: 100vh; }
@@ -39,6 +44,8 @@ body{
 /* ---------- screens ---------- */
 .screen{ display:none; min-height: 100vh; flex-direction: column; }
 .screen.active{ display:flex; }
+#screen-game{ background: rgba(0, 0, 0, .30); }
+#screen-gameover{ background: rgba(0, 0, 0, .35); }
 .toss-assignments{
   display:grid;
   gap:6px;
@@ -233,8 +240,14 @@ body{
   padding: 18px 16px 20px;
   display:flex; flex-direction:column;
 }
-.panel.batting{ border-top: 3px solid var(--bat-accent); }
-.panel.bowling{ border-top: 3px solid var(--bowl-accent); }
+.panel.batting{
+  background: rgba(20, 34, 26, .90);
+  border-top: 3px solid var(--bat-accent);
+}
+.panel.bowling{
+  background: rgba(20, 34, 26, .90);
+  border-top: 3px solid var(--bowl-accent);
+}
 
 .panel-head{ display:flex; align-items:center; gap:10px; margin-bottom: 12px; flex-wrap: wrap; }
 .panel-head .icon{ width:34px; height:34px; flex:0 0 auto; }
@@ -478,10 +491,10 @@ body{
   transition-delay: .29s;
 }
 .hand[data-pose="5"] .digit.thumb{
-  left: -45px;
+  left: -24px;
   bottom: 23px;
   transform: rotate(66deg) scaleY(1) translate(0, 0);
-  height: 54px;
+  height: 42px;
   transition-delay: .37s;
 }
 .hand[data-pose="5"] .palm{
@@ -499,7 +512,7 @@ body{
 /* six = thumbs-up gesture: fingers curled, thumb extended pointing straight up */
 .hand[data-pose="6"] .digit.thumb{
   transform: rotate(-70deg) translate(4px, -22px) scaleY(1);
-  height: 56px;
+  height: 42px;
   left: -2px;
 }
 
@@ -519,7 +532,7 @@ body{
   transition: transform .08s ease, box-shadow .08s ease;
 }
 .shake-btn:active:not(:disabled){ transform: translateY(4px); box-shadow: 0 2px 0 #7a611a, 0 4px 10px rgba(0,0,0,.35); }
-.shake-btn:disabled{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+.shake-btn:disabled{ opacity:.6; cursor:not-allowed; box-shadow:none; }
 
 .result-banner{ margin-top: 4px; min-height: 34px; font-size: 13px; color: var(--chalk-dim); text-align:center; max-width: 320px; }
 .result-banner b{ color: var(--brass); }
@@ -555,7 +568,8 @@ body{
 .trophy-overlay button{
   margin-top: 10px;
   font-family:'Space Grotesk', sans-serif;
-  background: transparent; border: 1px solid var(--chalk-dim); color: var(--chalk);
+  background: var(--brass); border: 1px solid var(--brass); color: var(--ink);
+  box-shadow: 0 4px 0 var(--brass-dim);
   padding: 8px 20px; border-radius: 999px; cursor:pointer;
 }
 
